@@ -92,6 +92,7 @@ static const AVOption options[] = {
     { "video_track_timescale", "set timescale of all video tracks", offsetof(MOVMuxContext, video_track_timescale), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "brand",    "Override major brand", offsetof(MOVMuxContext, major_brand),   AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "use_editlist", "use edit list", offsetof(MOVMuxContext, use_editlist), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, AV_OPT_FLAG_ENCODING_PARAM},
+    { "ts_offset", "Initial timestamp offset", offsetof(MOVMuxContext, ts_offset), AV_OPT_TYPE_INT, {.i64 = 0}, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "fragment_index", "Fragment number of the next fragment", offsetof(MOVMuxContext, fragments), AV_OPT_TYPE_INT, {.i64 = 1}, 1, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "mov_gamma", "gamma value for gama atom", offsetof(MOVMuxContext, gamma), AV_OPT_TYPE_FLOAT, {.dbl = 0.0 }, 0.0, 10, AV_OPT_FLAG_ENCODING_PARAM},
     { "frag_interleave", "Interleave samples within fragments (max number of consecutive samples, lower is tighter interleaving, but with more overhead)", offsetof(MOVMuxContext, frag_interleave), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM },
@@ -4402,7 +4403,8 @@ static void mov_prune_frag_info(MOVMuxContext *mov, int tracks, int max)
     }
 }
 
-static int mov_write_tfdt_tag(AVIOContext *pb, MOVTrack *track)
+static int mov_write_tfdt_tag(AVIOContext *pb, MOVMuxContext *mov,
+                              MOVTrack *track)
 {
     int64_t pos = avio_tell(pb);
 
@@ -4410,7 +4412,7 @@ static int mov_write_tfdt_tag(AVIOContext *pb, MOVTrack *track)
     ffio_wfourcc(pb, "tfdt");
     avio_w8(pb, 1); /* version */
     avio_wb24(pb, 0);
-    avio_wb64(pb, track->frag_start);
+    avio_wb64(pb, mov->ts_offset * track->timescale + track->frag_start);
     return update_size(pb, pos);
 }
 
@@ -4425,7 +4427,7 @@ static int mov_write_traf_tag(AVIOContext *pb, MOVMuxContext *mov,
 
     mov_write_tfhd_tag(pb, mov, track, moof_offset);
     if (mov->mode != MODE_ISM)
-        mov_write_tfdt_tag(pb, track);
+        mov_write_tfdt_tag(pb, mov, track);
     for (i = 1; i < track->entry; i++) {
         if (track->cluster[i].pos != track->cluster[i - 1].pos + track->cluster[i - 1].size) {
             mov_write_trun_tag(pb, mov, track, moof_size, start, i);
