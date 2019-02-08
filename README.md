@@ -4,6 +4,15 @@ FFmpeg README
 FFmpeg is a collection of libraries and tools to process multimedia content
 such as audio, video, subtitles and related metadata.
 
+## Build
+
+```
+docker build . -t "ng/ffmpeg"
+docker create ng/ffmpeg
+docker cp ab..ef:/usr/local/bin/ffmpeg ./ffmpeg-bin
+docker rm ab..ef
+```
+
 ## Libraries
 
 * `libavcodec` provides implementation of a wider range of codecs.
