@@ -92,7 +92,6 @@ static const AVOption options[] = {
     { "video_track_timescale", "set timescale of all video tracks", offsetof(MOVMuxContext, video_track_timescale), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "brand",    "Override major brand", offsetof(MOVMuxContext, major_brand),   AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "use_editlist", "use edit list", offsetof(MOVMuxContext, use_editlist), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, AV_OPT_FLAG_ENCODING_PARAM},
-    { "ts_offset", "Initial timestamp offset", offsetof(MOVMuxContext, ts_offset), AV_OPT_TYPE_INT, {.i64 = 0}, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "fragment_index", "Fragment number of the next fragment", offsetof(MOVMuxContext, fragments), AV_OPT_TYPE_INT, {.i64 = 1}, 1, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "mov_gamma", "gamma value for gama atom", offsetof(MOVMuxContext, gamma), AV_OPT_TYPE_FLOAT, {.dbl = 0.0 }, 0.0, 10, AV_OPT_FLAG_ENCODING_PARAM},
     { "frag_interleave", "Interleave samples within fragments (max number of consecutive samples, lower is tighter interleaving, but with more overhead)", offsetof(MOVMuxContext, frag_interleave), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM },
@@ -2960,6 +2959,10 @@ static int mov_write_edts_tag(AVIOContext *pb, MOVMuxContext *mov,
     int64_t delay, start_ct = track->start_cts;
     int64_t start_dts = track->start_dts;
 
+    av_log(mov->fc, AV_LOG_DEBUG,
+            "dts:%"PRId64" cts:%d pts:%"PRId64"\n",
+            track->start_dts, track->start_cts, track->end_pts);
+
     if (track->entry) {
         if (start_dts != track->cluster[0].dts || start_ct != track->cluster[0].cts) {
 
@@ -2972,6 +2975,7 @@ static int mov_write_edts_tag(AVIOContext *pb, MOVMuxContext *mov,
         }
     }
 
+    start_dts = -1 * start_ct;
     delay = av_rescale_rnd(start_dts + start_ct, MOV_TIMESCALE,
                            track->timescale, AV_ROUND_DOWN);
     version |= delay < INT32_MAX ? 0 : 1;
@@ -4412,7 +4416,7 @@ static int mov_write_tfdt_tag(AVIOContext *pb, MOVMuxContext *mov,
     ffio_wfourcc(pb, "tfdt");
     avio_w8(pb, 1); /* version */
     avio_wb24(pb, 0);
-    avio_wb64(pb, mov->ts_offset * track->timescale + track->frag_start);
+    avio_wb64(pb, track->start_dts + track->start_cts + track->frag_start);
     return update_size(pb, pos);
 }
 
@@ -5061,7 +5065,6 @@ static int mov_flush_fragment(AVFormatContext *s, int force)
         int64_t pos = avio_tell(s->pb);
         uint8_t *buf;
         int buf_size, moov_size;
-
         for (i = 0; i < mov->nb_streams; i++)
             if (!mov->tracks[i].entry && !is_cover_image(mov->tracks[i].st))
                 break;
@@ -5109,6 +5112,20 @@ static int mov_flush_fragment(AVFormatContext *s, int force)
         }
         avio_flush(s->pb);
         return 0;
+    }
+
+    for (i = 0; i < mov->nb_streams; i++) {
+        MOVTrack *track = &mov->tracks[i];
+        int64_t pos = avio_tell(s->pb);
+        int moov_size;
+
+        moov_size = get_moov_size(s);
+        track->data_offset += pos + moov_size + 8;
+
+        // avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_HEADER);
+        mov_write_identification(s->pb, s);
+        if ((ret = mov_write_moov_tag(s->pb, mov, s)) < 0)
+            return ret;
     }
 
     if (mov->frag_interleave) {

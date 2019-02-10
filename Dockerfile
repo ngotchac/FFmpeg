@@ -358,7 +358,6 @@ RUN \
 RUN \
         DIR=/tmp/ffmpeg && cd ${DIR} && \
         ./configure \
-        --disable-debug \
         --disable-doc \
         --disable-ffplay \
         --enable-gpl \
@@ -368,23 +367,21 @@ RUN \
         --enable-libfdk_aac \
         --enable-postproc \
         --enable-version3 \
+        --enable-hardcoded-tables \
         --pkg-config-flags="--static" \
         --extra-ldexeflags="-static" \
         --extra-cflags="-I${PREFIX}/include" \
         --extra-ldflags="-L${PREFIX}/lib" \
         --extra-libs=-ldl \
         --prefix="${PREFIX}" && \
-        make -j 8 && \
-        make install && \
-        make distclean && \
-        hash -r && \
-        cd tools && \
-        make qt-faststart && \
-        cp qt-faststart ${PREFIX}/bin
+        make -j 8
+        # make distclean
+        # make install && \
+        # hash -r
 
 ## cleanup
-RUN \
-        cp ${PREFIX}/bin/* /usr/local/bin/
+# RUN \
+#         cp ${PREFIX}/bin/* /usr/local/bin/
 # RUN \
 #         ldd ${PREFIX}/bin/ffmpeg | grep opt/ffmpeg | cut -d ' ' -f 3 | xargs -i cp {} /usr/local/lib/ && \
 #         cp ${PREFIX}/bin/* /usr/local/bin/ && \
