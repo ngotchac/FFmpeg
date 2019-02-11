@@ -113,6 +113,8 @@ typedef struct DASHContext {
     int min_seg_duration;
 #endif
     int64_t seg_duration;
+    int break_non_keyframes;
+    int segment_idx;       ///< index of the segment file to write, starting from 0
     int remove_at_exit;
     int use_template;
     int use_timeline;
@@ -411,8 +413,8 @@ static void get_hls_playlist_name(char *playlist_name, int string_size,
 
 static void get_start_index_number(OutputStream *os, DASHContext *c,
                                    int *start_index, int *start_number) {
-    *start_index = 0;
-    *start_number = 1;
+    *start_index = c->segment_idx;
+    *start_number = c->segment_idx;
     if (c->window_size) {
         *start_index  = FFMAX(os->nb_segments   - c->window_size, 0);
         *start_number = FFMAX(os->segment_index - c->window_size, 1);
@@ -1252,7 +1254,7 @@ static int dash_init(AVFormatContext *s)
         os->first_pts = AV_NOPTS_VALUE;
         os->max_pts = AV_NOPTS_VALUE;
         os->last_dts = AV_NOPTS_VALUE;
-        os->segment_index = 1;
+        os->segment_index = c->segment_idx;
     }
 
     if (!c->has_video && c->seg_duration <= 0) {
@@ -1554,7 +1556,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
     DASHContext *c = s->priv_data;
     AVStream *st = s->streams[pkt->stream_index];
     OutputStream *os = &c->streams[pkt->stream_index];
-    int64_t seg_end_duration, elapsed_duration;
+    int64_t seg_end, elapsed_duration;
     int ret;
 
     ret = update_stream_extradata(s, os, st->codecpar, &st->avg_frame_rate);
@@ -1594,20 +1596,28 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
                                          frame_duration) / AV_TIME_BASE;
     }
 
-    if (c->use_template && !c->use_timeline) {
-        elapsed_duration = pkt->pts - os->first_pts;
-        seg_end_duration = (int64_t) os->segment_index * c->seg_duration;
-    } else {
-        elapsed_duration = pkt->pts - os->start_pts;
-        seg_end_duration = c->seg_duration;
-    }
+    // if (c->use_template && !c->use_timeline) {
+    //     elapsed_duration = pkt->pts - os->first_pts;
+    //     seg_end_duration = (int64_t) os->segment_index * c->seg_duration;
+    // } else {
+    //     elapsed_duration = pkt->pts - os->start_pts;
+    //     seg_end_duration = c->seg_duration;
+    // }
+    elapsed_duration = pkt->pts - os->first_pts;
+    seg_end = (int64_t) (os->segment_index + 1) * c->seg_duration;
 
     if ((!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) &&
-        pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
-        av_compare_ts(elapsed_duration, st->time_base,
-                      seg_end_duration, AV_TIME_BASE_Q) >= 0)
+        (pkt->flags & AV_PKT_FLAG_KEY || c->break_non_keyframes) &&
+        os->packets_written &&
+        av_compare_ts(pkt->pts, st->time_base,
+                      seg_end, AV_TIME_BASE_Q) >= 0)
     {
         int64_t prev_duration = c->last_duration;
+
+        av_log(s, AV_LOG_DEBUG,
+            "New segment created: elapsed=%d ; seg_end=%d ; pts=%d\n",
+            elapsed_duration, seg_end, pkt->pts
+        );
 
         c->last_duration = av_rescale_q(pkt->pts - os->start_pts,
                                         st->time_base,
@@ -1776,7 +1786,9 @@ static const AVOption options[] = {
 #if FF_API_DASH_MIN_SEG_DURATION
     { "min_seg_duration", "minimum segment duration (in microseconds) (will be deprecated)", OFFSET(min_seg_duration), AV_OPT_TYPE_INT, { .i64 = 5000000 }, 0, INT_MAX, E },
 #endif
+    { "break_non_keyframes", "allow breaking segments on non-keyframes", OFFSET(break_non_keyframes), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, E },
     { "seg_duration", "segment duration (in seconds, fractional value can be set)", OFFSET(seg_duration), AV_OPT_TYPE_DURATION, { .i64 = 5000000 }, 0, INT_MAX, E },
+    { "start_number", "set the sequence number of the first segment", OFFSET(segment_idx), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, E },
     { "remove_at_exit", "remove all segments when finished", OFFSET(remove_at_exit), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
     { "use_template", "Use SegmentTemplate instead of SegmentList", OFFSET(use_template), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, E },
     { "use_timeline", "Use SegmentTimeline in SegmentTemplate", OFFSET(use_timeline), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, E },

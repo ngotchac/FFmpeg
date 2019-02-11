@@ -2975,7 +2975,7 @@ static int mov_write_edts_tag(AVIOContext *pb, MOVMuxContext *mov,
         }
     }
 
-    start_dts = -1 * start_ct;
+    // start_dts = -1 * start_ct;
     delay = av_rescale_rnd(start_dts + start_ct, MOV_TIMESCALE,
                            track->timescale, AV_ROUND_DOWN);
     version |= delay < INT32_MAX ? 0 : 1;
@@ -4410,13 +4410,20 @@ static void mov_prune_frag_info(MOVMuxContext *mov, int tracks, int max)
 static int mov_write_tfdt_tag(AVIOContext *pb, MOVMuxContext *mov,
                               MOVTrack *track)
 {
+    // MODIFICATIONS!!
     int64_t pos = avio_tell(pb);
+    int64_t tfdt = track->start_dts + track->start_cts + track->frag_start;
+    // int64_t tfdt = track->frag_start;
+
+    if (tfdt < 0) {
+        tfdt = 0;
+    }
 
     avio_wb32(pb, 0); /* size */
     ffio_wfourcc(pb, "tfdt");
     avio_w8(pb, 1); /* version */
     avio_wb24(pb, 0);
-    avio_wb64(pb, track->start_dts + track->start_cts + track->frag_start);
+    avio_wb64(pb, tfdt);
     return update_size(pb, pos);
 }
 
@@ -5114,19 +5121,20 @@ static int mov_flush_fragment(AVFormatContext *s, int force)
         return 0;
     }
 
-    for (i = 0; i < mov->nb_streams; i++) {
-        MOVTrack *track = &mov->tracks[i];
-        int64_t pos = avio_tell(s->pb);
-        int moov_size;
+    // MODIFICATIONS !!
+    // for (i = 0; i < mov->nb_streams; i++) {
+    //     MOVTrack *track = &mov->tracks[i];
+    //     int64_t pos = avio_tell(s->pb);
+    //     int moov_size;
 
-        moov_size = get_moov_size(s);
-        track->data_offset += pos + moov_size + 8;
+    //     moov_size = get_moov_size(s);
+    //     track->data_offset += pos + moov_size + 8;
 
-        // avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_HEADER);
-        mov_write_identification(s->pb, s);
-        if ((ret = mov_write_moov_tag(s->pb, mov, s)) < 0)
-            return ret;
-    }
+    //     // avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_HEADER);
+    //     mov_write_identification(s->pb, s);
+    //     if ((ret = mov_write_moov_tag(s->pb, mov, s)) < 0)
+    //         return ret;
+    // }
 
     if (mov->frag_interleave) {
         for (i = 0; i < mov->nb_streams; i++) {
