@@ -358,35 +358,38 @@ RUN \
 RUN \
         DIR=/tmp/ffmpeg && cd ${DIR} && \
         ./configure \
-        --disable-doc \
-        --disable-ffplay \
-        --enable-gpl \
-        --enable-libx264 \
-        --enable-nonfree \
-        --enable-openssl \
-        --enable-libfdk_aac \
-        --enable-postproc \
-        --enable-version3 \
-        --enable-hardcoded-tables \
-        --pkg-config-flags="--static" \
-        --extra-ldexeflags="-static" \
-        --extra-cflags="-I${PREFIX}/include" \
-        --extra-ldflags="-L${PREFIX}/lib" \
-        --extra-libs=-ldl \
-        --prefix="${PREFIX}" && \
+                --disable-doc \
+                --disable-ffplay \
+                --enable-gpl \
+                --enable-libx264 \
+                --enable-nonfree \
+                --enable-openssl \
+                --enable-libfdk_aac \
+                --enable-postproc \
+                --enable-version3 \
+                --enable-hardcoded-tables \
+                --pkg-config-flags="--static" \
+                --extra-ldexeflags="-static" \
+                --extra-cflags="-I${PREFIX}/include" \
+                --extra-ldflags="-L${PREFIX}/lib" \
+                --extra-libs=-ldl \
+                --prefix="${PREFIX}" && \
         make -j 8
         # make distclean
         # make install && \
         # hash -r
 
+RUN DIR=/tmp/ffmpeg && cd ${DIR} && git pull && git checkout 44fab8efa7fa44e6c6932dd5f07f8e9222c5ae61
+RUN DIR=/tmp/ffmpeg && cd ${DIR} && make -j 8 && make install
+
 ## cleanup
-# RUN \
-#         cp ${PREFIX}/bin/* /usr/local/bin/
-# RUN \
-#         ldd ${PREFIX}/bin/ffmpeg | grep opt/ffmpeg | cut -d ' ' -f 3 | xargs -i cp {} /usr/local/lib/ && \
-#         cp ${PREFIX}/bin/* /usr/local/bin/ && \
-#         cp -r ${PREFIX}/share/ffmpeg /usr/local/share/ && \
-#         LD_LIBRARY_PATH=/usr/local/lib ffmpeg -buildconf
+RUN \
+        cp ${PREFIX}/bin/* /usr/local/bin/
+RUN \
+        ldd ${PREFIX}/bin/ffmpeg | grep opt/ffmpeg | cut -d ' ' -f 3 | xargs -i cp {} /usr/local/lib/ && \
+        cp ${PREFIX}/bin/* /usr/local/bin/ && \
+        cp -r ${PREFIX}/share/ffmpeg /usr/local/share/ && \
+        LD_LIBRARY_PATH=/usr/local/lib ffmpeg -buildconf
 
 CMD         ["--help"]
 ENTRYPOINT  ["ffmpeg"]
